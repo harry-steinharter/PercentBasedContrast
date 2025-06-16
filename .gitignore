@@ -1,0 +1,7 @@
+.*
+SecretFiles/
+
+
+!.gitignore
+!.env
+!.gitattributes
