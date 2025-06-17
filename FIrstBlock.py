@@ -10,23 +10,6 @@ sys.path.append('/Users/harrysteinharter/Documents/MSc/Timo Internship/7LineSegm
 # import otherFunctions as OF 
 mywin = visual.Window(fullscr=True, monitor="Flanders", units="deg",colorSpace='rgb',color = [0,0,0],bpc=(10,10,10),depthBits=10)
 # Define the condition
-def SubNumber(filename):
-#    os.chdir("/Users/harrysteinharter/Documents/Programming/Timo Internship")
-    with open(filename, 'r', encoding='utf-8-sig') as file:
-        content = int(file.read().strip())
-
-    content_int = int(content)
-    new_content = (content_int + 1)
-    
-    with open(filename, 'w') as file:
-        file.write(str(new_content))
-    return new_content
-def drawOrder(stim, win = mywin):
-    if not isinstance(stim, (list,tuple)):
-        stim = [stim]
-    for i in stim:
-        i.draw()
-    mywin.flip()
     
 
 X = str(SubNumber("subNum.txt"))
@@ -51,6 +34,7 @@ stairs = data.StairHandler(startVal = 0.1, minVal = 0, maxVal = 0.1,
                            stepSizes = 0.1, stepType = 'log', nReversals=1,
                            nUp = n_up, nDown = n_down, nTrials = nTrials)
 # Clocks
+def experiment
 trialClock = core.Clock()
 
 for trial in stairs:
