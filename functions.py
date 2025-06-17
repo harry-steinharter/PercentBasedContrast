@@ -24,12 +24,6 @@ def SubNumber(filename):
 class xWindow:
     def __init__(self, mywin):
         self.mywin = mywin
-        # Other atributes necessary for other classes to inherit window properties
-        # self.units = mywin.units 
-        # self.blendMode = mywin.blendMode
-        # self.monitor = mywin.monitor
-        # self.winType = mywin.winType
-        # self._toDraw = []
 
         self.line_top = visual.Line(win=mywin, start=(0,.75), end=(0,1.25),  lineWidth=4.2, pos=(0,0),  colorSpace='rgb', color = -1)
         self.line_target = visual.Line(win=mywin, start=(0,-0.25), end=(0,0.25),  lineWidth=4.2, pos=(0,0),  colorSpace='rgb', color = -1)
@@ -218,6 +212,8 @@ class experiment:
             if thisTrial in breaks:
                 self.doBreak(b = np.where(breaks == thisTrial)[0][0])
 
+            if self.eyeTracker.doTracking:
+                self.eyeTracker.tracker.startRecording()
             thisIntensity = stairs.currentStaircase.intensity
             thisLabel = condition['label']
 
@@ -230,11 +226,18 @@ class experiment:
             self.mywin.line_top.contrast = condition['FC']
             self.mywin.line_bottom.contrast = condition['FC']
 
+            # Draw fixation
+            self.mywin.diode.color *= -1 # white -- button on
             self.mywin.drawOrder(self.mywin.fixation)
             core.wait(self.t_fixation)
+            self.blinkDiode() # black -- button off
 
+            # Draw stmiulus
+            self.eyeTracker.stimOnset(thisTrial,thisLabel,thisIntensity)
+            self.mywin.diode.color *= -1 # white -- button on
             self.mywin.drawOrder(lines)
             core.wait(self.t_stim)
+            self.blinkDiode() # black -- button off
 
             trialClock.reset()
             self.mywin.drawOrder(self.mywin.blank)
@@ -262,12 +265,15 @@ class experiment:
                 thisResp = 0
                 thisRT = 99
 
+            self.eyeTracker.logResponse(thisResp,thisRT)
             dataFile.write(f"{self.id},{thisTrial},{thisLabel},{condition['FC']},{stairs.currentStaircase.intensity},{thisResp},{thisRT}\n")
             if not thisLabel.endswith("_null"): 
                 stairs.addResponse(thisResp)
             # Don't adjust the staircase for a null trial
 
             thisTrial += 1
+            if self.eyeTracker.doTracking:
+                self.eyeTracker.tracker.stopRecording()
 
         stairs.saveAsPickle(f'Experiment_outputs/{self.id}')
     
@@ -314,7 +320,13 @@ class experiment:
             event.waitKeys()
             return False
 
-
+    def blinkDiode(self,t=2/60):
+        # Defaults to two frames blink (at 60fps)
+        # Blinks the diode to indicate the offset of a stimulus
+        # Does not draw any new stimuli, flips the window with existing stuff
+        self.mywin.diode.color *= -1
+        self.mywin.mywin.flip()
+        core.wait(t) # 2 frames
 
 class xPyLink:
     def __init__(self,id,
@@ -342,3 +354,13 @@ class xPyLink:
         self.tracker.closeDataFile()
         self.tracker.receiveDataFile(self.eyeHostFile, self.eyeLocalFile) # Takes closed data file from 'src' on host PC and copies it to 'dest' at Stimulus PC
         self.tracker.close()
+
+    def stimOnset(self,trial_id,condition,contrast):
+        if not self.doTracking:
+            return
+        self.tracker.sendMessage(f"TRIAL_START {trial_id} CONTRAST {contrast} CONDITION {condition}")
+
+    def logResponse(self,response,rt):
+        if not self.doTracking:
+            return
+        self.tracker.sendMessage(f"RESPONSE {response} RT {rt}")

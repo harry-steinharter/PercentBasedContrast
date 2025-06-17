@@ -12,7 +12,6 @@ sub_id = str(F.SubNumber("subNum.txt"))
 
 # %% Setup EyeLink
 eye = F.xPyLink(sub_id, doTracking=False)
-eye.startTracker()
 
 # %% Setup Window
 mywin = visual.Window(fullscr=True, monitor="Flanders", units="deg",colorSpace='rgb',color = [0,0,0],bpc=(10,10,10),depthBits=10)
@@ -21,7 +20,7 @@ xWindow = F.xWindow(mywin)
 # %% Do Baseline
 n_up = 1
 n_down = 1
-nTrials = 150 
+nTrials = 10#150 
 baselineCondition = [
     {'label':'baseline','startVal':0.1,'maxVal':0.1,'minVal':0.0,
         'stepSizes':0.1,'stepType':'log','nReversals':1,
