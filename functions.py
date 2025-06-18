@@ -100,10 +100,10 @@ class experiment:
         core.wait(5)
         
     def getBreaks(self):
-        totalTrials = int(len(self.myConds) * self.nTrials * self.nBlocks)
+        totalTrials = int(len(self.myConds) * self.nTrials)
         breakTrials = np.linspace(start=0,stop=totalTrials, num=self.nBlocks,
                                   endpoint=False,dtype=int)[1:]
-        return breakTrials
+        return breakTrials, totalTrials
 
     def openDataFile(self,block:Literal['baseline', 'test']):
         if block == 'baseline':
@@ -144,7 +144,7 @@ class experiment:
             if np.random.random() <= self.nullOdds:
                 thisIntensity = 0
                 thisLabel += '_null'
-            self.mywin.line_target.contrast = thisIntensity
+            self.mywin.line_target.contrast = -thisIntensity
 
             self.mywin.drawOrder(self.mywin.fixation)
             core.wait(self.t_fixation)
@@ -200,12 +200,11 @@ class experiment:
 
     def testing(self,dataFile):
         lines = [self.mywin.line_target, self.mywin.line_top, self.mywin.line_bottom]
-        breaks = self.getBreaks()
+        breaks, totalTrials = self.getBreaks()
 
         stairs = self.stairs
 
         trialClock = core.Clock()
-        totalTrials = self.nTrials * len(self.myConds)
         thisTrial = 0
 
         for trial, condition in stairs:
@@ -213,7 +212,7 @@ class experiment:
                 self.doBreak(b = np.where(breaks == thisTrial)[0][0])
 
             if self.eyeTracker.doTracking:
-                self.eyeTracker.tracker.startRecording()
+                self.eyeTracker.tracker.startRecording(1,1,1,1)
             thisIntensity = stairs.currentStaircase.intensity
             thisLabel = condition['label']
 
@@ -222,9 +221,9 @@ class experiment:
                 thisIntensity = 0
                 thisLabel += '_null'
 
-            self.mywin.line_target.contrast = thisIntensity
-            self.mywin.line_top.contrast = condition['FC']
-            self.mywin.line_bottom.contrast = condition['FC']
+            self.mywin.line_target.contrast = -thisIntensity
+            self.mywin.line_top.contrast = -condition['FC']
+            self.mywin.line_bottom.contrast = -condition['FC']
 
             # Draw fixation
             self.mywin.diode.color *= -1 # white -- button on
@@ -256,11 +255,11 @@ class experiment:
                         thisResp = 0
                     elif key in ['right','num_6']:
                         thisResp = 1
-                    elif key in ['q','escape']:
+                    else:# key in ['q','escape']:
                         self.eyeTracker.closeTracker()
                         core.quit()
-                    else:
-                        raise ValueError(f"Unexpected key: {key}")
+#                    else:
+#                        raise ValueError(f"Unexpected key: {key}")
             else:
                 thisResp = 0
                 thisRT = 99
@@ -303,9 +302,9 @@ class experiment:
 
     def reDoBase(self,thresh):
         m_redo = visual.TextStim(self.mywin.mywin, color='black', wrapWidth=20,
-                                 text = f"\nParticipant {self.id} baseline detection threshold:\n{thresh}\nThreshold outside of expected range.\nTry again [y / n]?")
+                                 text = f"Please wait for the experimenter.\nParticipant {self.id} baseline detection threshold:\n{thresh}\nThreshold outside of expected range.\nTry again [y / n]?")
         m_good = visual.TextStim(self.mywin.mywin, color='black', wrapWidth=20,
-                                 text = f"Participant {self.id} baseline detection threshold:\n{thresh}\nThreshold inside of expected range.\nPress any key to continue.")
+                                 text = f"Please wait for the experimenter.\nParticipant {self.id} baseline detection threshold:\n{thresh}\nThreshold inside of expected range.\\Go again [y / n]?")
         if thresh > 0.1 or thresh <= 0:
             self.mywin.drawOrder(m_redo)
             keys = event.waitKeys(keyList=['y','n'])
@@ -317,7 +316,7 @@ class experiment:
                         return False
         else:
             self.mywin.drawOrder(m_good)
-            event.waitKeys()
+            event.waitKeys(keyList=['y','n'])
             return False
 
     def blinkDiode(self,t=2/60):
@@ -344,9 +343,9 @@ class xPyLink:
         self.tracker = pylink.EyeLink(self.ip)
         self.tracker.openDataFile(self.eyeHostFile)
         self.tracker.sendCommand("screen_pixel_coords = 0 0 1919 1079")
-        self.tracker.openGraphics()
+        pylink.openGraphics()
         self.tracker.doTrackerSetup()
-        self.tracker.closeGraphics()
+        pylink.closeGraphics()
 
     def closeTracker(self):
         if not self.doTracking:

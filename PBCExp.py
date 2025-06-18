@@ -7,11 +7,12 @@ from importlib import reload
 import functions as F
 reload(F)
 
-
+testing = False
 sub_id = str(F.SubNumber("subNum.txt"))
 
 # %% Setup EyeLink
-eye = F.xPyLink(sub_id, doTracking=False)
+eye = F.xPyLink(sub_id, doTracking=True)
+eye.startTracker()
 
 # %% Setup Window
 mywin = visual.Window(fullscr=True, monitor="Flanders", units="deg",colorSpace='rgb',color = [0,0,0],bpc=(10,10,10),depthBits=10)
@@ -20,7 +21,10 @@ xWindow = F.xWindow(mywin)
 # %% Do Baseline
 n_up = 1
 n_down = 1
-nTrials = 10#150 
+nTrials = 120
+if testing:
+    nTrials = 30
+    
 baselineCondition = [
     {'label':'baseline','startVal':0.1,'maxVal':0.1,'minVal':0.0,
         'stepSizes':0.1,'stepType':'log','nReversals':1,
@@ -45,6 +49,9 @@ while redo == True:
         xWindow.countdown()
 
 # %% Do Experiment
+if testing:
+    if baseThreshold < 0 or baseThreshold > 0.1:
+        baseThreshold = 0.0175517727257755
 nBlocks = 7
 nTrials //= 5 # floor divide for int. Divide by len(experimentConditions)
 experimentConditions = [
@@ -66,7 +73,7 @@ experimentConditions = [
 
 testing = F.experiment(myXwin=xWindow,
                        myConds=experimentConditions,
-                       nTrials=nTrials,
+                       nTrials=nTrials*nBlocks,
                        subject_id=sub_id,
                        eyeTracker=eye,
                        nBlocks=nBlocks)
