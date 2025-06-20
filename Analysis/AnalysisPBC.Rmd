@@ -1,0 +1,231 @@
+---
+title: "5 Line Segments Results"
+output: html_notebook
+---
+# Setup
+```{r Libraries, echo=FALSE,message=FALSE}
+library(afex)
+library(lme4)
+library(effectsize)
+library(magrittr)
+library(ggpubr)
+library(ggplot2)
+
+threshReduction <- function(value,baseline){
+  return ((value-baseline) / baseline)
+}
+```
+Finish data frames
+```{r, DFs}
+rmPeople <- FALSE
+getLeverage <- FALSE
+rmWho <- c() # cooks distance
+
+dfGLM <- read.csv('dfGLM.csv', stringsAsFactors = TRUE)
+if(rmPeople){dfGLM %<>% subset(!Participant_Number %in% rmWho)} # Remove problematic points
+dfGLM$id %<>% as.factor() %>% droplevels()
+dfGLM$label %<>% as.factor()
+
+
+df2Way <- read.csv('df2Way.csv', stringsAsFactors = TRUE)
+if(rmPeople){df2Way %<>% subset(!Participant_Number %in% rmWho)} # Remove problematic points
+df2Way$id %<>% as.factor() %>% droplevels()
+df2Way$label %<>% as.factor()
+
+df1Way <- read.csv("df1Way_fromPy.csv", stringsAsFactors = TRUE)
+if(rmPeople){df_python %<>% subset(!id %in% rmWho)} # Remove problematic points
+df1Way$id %<>% as.factor() %>% droplevels()
+df1Way$label %<>% as.factor()
+df1Way$threshold_michelson_c <- scale(df1Way$threshold_michelson, scale = F) %>% c()
+```
+
+# Stats
+## GLM + LRT
+Should models here use `baseline` as a continuous predictor? It may explain additional variance, but it is not necessarily interesting. The lower your baseline threshold is, the better you are at seeing the target. Thus you would expect to see a large negative estimate.
+
+Baseline can either be modeled by adding into the formula a `+ baseline`.
+
+### Using Nominal Factors
+This mode uses the factorized versions of the flanker contrast variables: `label`.
+```{r GLMfactor, warning=F}
+conds <- dfGLM$label %>% levels()
+contrasts <- list('label' = contr.treatment(n = conds, base = which(conds == '0')))
+Control <- glmerControl(optimizer = "bobyqa", optCtrl = list(maxfun = 3e8),
+                         check.conv.grad = .makeCC("warning", tol = 0.005, relTol = NULL))
+
+model_glm_f <- glmer(data = dfGLM, 
+                    formula = "responseRate ~ TC_michelson_c * label + (1|id)",
+                    family = binomial('logit'),
+                    weights = weights,
+                    contrasts = contrasts,
+                    control = Control)
+dfGLM$probability_f <- predict(model_GLM_f,type='response', re.form = NA)
+
+model_lrt_f <- mixed(data = dfGLM,
+                    formula = "responseRate ~ TC_michelson_c * label + (1|id)",
+                    family = binomial('logit'),
+                    weights = weights,
+                    type = 3,
+                    method = 'LRT',
+                    control = Control)
+model_lrt_f
+```
+### Using Continuous Predictors
+This mode uses the numeric (and centered) versions of the flanker contrast variables: `FC_michelson_c`.
+```{r GLMnumeric, warning=F}
+model_GLM_n <- glmer(data = dfGLM,
+                     formula = "responseRate ~ TC_michelson_c * FC_michelson_c + (1|id)",
+                     family = binomial('logit'),
+                     weights = weights,
+                     control = Control)
+dfGLM$probability_n <- predict(model_GLM_n,type='response', re.form = NA)
+
+model_LRT_n <- mixed(data = dfGLM,
+                     formula = "responseRate ~ TC_michelson_c * FC_michelson_c  + (1|id)",
+                     family = binomial('logit'),
+                     weights = weights,
+                     type = 3,
+                     method = 'LRT',
+                     control = Control)
+model_LRT_n
+```
+
+## 1-Way ANOVA
+ANOVA using the percent of baseline contrast (`label`).
+```{r 1way, warning=F}
+model_2wayPy <- aov_ez(data = df1Way,
+                       id = 'id',
+                       dv = 'threshold_michelson_c',
+                       within = c('label'),
+                       type = 3,
+                       anova_table = list(es = 'pes', MSE = FALSE,
+                                        p_adjust_method = 'none', 
+                                        correction = 'GG'))
+model_2wayPy
+emmeans::emmeans(model_2wayPy, specs = ~ label) %>% pairs()
+```
+## 2-Way ANOVA
+Same as the 1-way, however, now we add `TC_f` as a predictor.
+```{r 2way, warning=T}
+model_2way <- aov_ez(data = df2Way,
+                     id = "id",
+                     dv = "responseRate",
+                     within = c("label","TC_f"),
+                     type = 3,
+                     anova_table = list(es = 'pes', MSE = FALSE,
+                                        p_adjust_method = 'none', 
+                                        correction = 'GG'))
+model_2way
+emmeans::emmeans(model_2way, specs = ~ label | TC_f) %>% pairs()
+```
+
+# Plotting
+```{r aes, include=F, echo=F}
+colors <- RColorBrewer::brewer.pal(length(conds),'Dark2')
+Palette <- setNames(colors,conds)
+
+newDat <- expand.grid(label = conds,
+                      TC_michelson_c = seq(min(dfGLM$TC_michelson_c),
+                                           max(dfGLM$TC_michelson_c),
+                                           .0001))
+
+newDat$probability_f <- predict(model_glm_f, re.form = NA, type = 'response', newdata = newDat)
+```
+## GLM
+```{r glmPlot, echo=F}
+ggplot(data = newDat,
+       mapping = aes(x = TC_michelson_c + weighted.mean(dfGLM$TC_michelson,dfGLM$weights), 
+                     y = probability_f,
+                     color = label)) +
+  geom_line(linewidth = 1.3) +
+  scale_x_continuous(transform = 'log10') +
+  scale_color_manual(
+    values = Palette,
+    name = "Flanker\nContrast") +
+  xlab('Target Contrast') +
+  ylab('Detection Probability') +
+  geom_hline(yintercept = .5, linetype = 'dashed') +
+  ylim(0,1) +
+  theme_pubr() +
+  theme(text = element_text(size = 16, family = 'Times'),
+        legend.position = 'right')
+ggsave("/Users/harrysteinharter/Documents/MSc/Thesis_Overview/Experiment_6/images6/Exp6GLM.png")
+```
+
+## 1-Way ANOVA Plot
+```{r 1wayPlot, echo=F}
+dodgeWidth = .9
+ggplot(data = df1Way,
+       mapping = aes(x = label, y = threshold,
+                     color = I('black'), fill = label)) +
+  stat_summary(geom = 'bar',
+               fun = 'mean',
+               position = position_dodge(dodgeWidth),
+               show.legend = FALSE) +
+  stat_summary(geom = 'errorbar',
+               fun.data = mean_cl_normal,
+               position = position_dodge(dodgeWidth),
+               width = .2,) +
+  scale_fill_manual(
+    values = Palette) +
+  xlab("Flanker Contrast") +
+  ylab('Detection Threshold') +
+  theme_pubr() +
+  theme(text = element_text(size = 16, family = 'Times'),
+        legend.position = 'right')
+ggsave("/Users/harrysteinharter/Documents/MSc/Thesis_Overview/Experiment_6/images6/Exp6ANOVA.png")
+```
+## Percent Facilitation Plot
+```{r facilPlot, echo=F}
+df1Way %<>%
+  mutate(reduction = threshReduction(threshold_michelson, baseline_michelson))
+
+ggplot(data = df1Way,
+       mapping = aes(x = label, y = reduction)) +
+  geom_hline(yintercept = 0,
+             linetype = 'dashed') +
+  stat_summary(geom = 'errorbar',
+               width = .2,
+               fun.data = mean_cl_normal) +
+  stat_summary(geom = 'line',
+               mapping = aes(group = 1),
+               fun = mean) +
+  stat_summary(geom = 'point',
+               mapping = aes(color = label),
+               size = 4,
+               fun = mean,
+               show.legend = FALSE) +
+  scale_color_manual(values = Palette) +
+  xlab("Flanker Contrast") +
+  ylab("Threshold Reduction") +
+  theme_pubr() +
+  theme(text = element_text(size = 16, family = 'times'))
+ggsave("/Users/harrysteinharter/Documents/MSc/Thesis_Overview/Experiment_6/images6/Exp6ThresholdReduction.png")
+```
+
+
+## 2-Way ANOVA Plot
+```{r 2wayPlot, echo=F}
+dodgeWidth = .9
+ggplot(data = df2Way,
+       mapping = aes(x = TC_f %>% factor(c('Low','Medium','High')), y = responseRate,
+                     fill = label, color = I('black'))) +
+  stat_summary(geom = 'bar',
+               fun = 'mean',
+               position = position_dodge(dodgeWidth),
+               width = dodgeWidth) +
+  stat_summary(geom = 'errorbar',
+               fun.data = mean_cl_normal,
+               position = position_dodge(dodgeWidth),
+               width = .2) +
+  scale_fill_manual(values = Palette,
+                     name = "Flanker\nContrast") +
+  ylim(0,1) +
+  xlab('Flanker Contrast') +
+  ylab('Mean Response Rate') +
+  theme_pubr() +
+  theme(text = element_text(size = 16, family = 'Times'),
+        legend.position = 'right')
+ggsave("/Users/harrysteinharter/Documents/MSc/Thesis_Overview/Experiment_6/images6/Exp6ANOVA2.png")
+```
+
